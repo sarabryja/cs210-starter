@@ -26,13 +26,17 @@ abstract class AbstractModule {
 			stored_schemas,
 			stored_states
 	
-	static data() {[
-		query_data,
-		computed_schemas = computed_schemas ?: ([null]*query_data.size()),
-		computed_states = computed_states ?: ([null]*query_data.size()),
-		stored_schemas = stored_schemas ?: ([null]*query_data.size()),
-		stored_states = stored_states ?: ([null]*query_data.size())
-	].transpose()*.flatten()*.toArray()}
+	static data() {
+		def empty = {[null]*query_data.size()},
+			pad = {it + [null]*(query_data.size()-it.size())}
+		[
+			query_data,
+			computed_schemas = computed_schemas ? pad(computed_schemas) : empty(),
+			computed_states = computed_states ? pad(computed_states) : empty(),
+			stored_schemas = stored_schemas ? pad(stored_schemas) : empty(),
+			stored_states = stored_states ? pad(stored_states) : empty()
+		].transpose()*.flatten()*.toArray()
+	}
 	
 	@DisplayName('Queries')
 	@ParameterizedTest(name = '[{index}] {1}')
@@ -50,36 +54,40 @@ abstract class AbstractModule {
 		
 		System.out.println(query_code)
 		
-		def queries = query_code.split(';')
-		def query_count = queries.size()
+		def queries = query_code.split(';'),
+			query_count = queries.size()
 		
-		def on_table = (queries[-1].strip() =~ /^\w+\s+\w+\s+([a-z][a-z0-9_]*)\b/)
-		def stored_table_name = on_table.size() == 1 ? on_table[0][1] : null
+		def on_table = (queries[-1].strip() =~ /^\w+\s+\w+\s+([a-z][a-z0-9_]*)\b/),
+			stored_table_name = on_table.size() == 1 ? on_table[0][1] : null
 		
-		def responses = DB.interpret(query_code)
-		def last = responses[-1]
-		def last_table = last?.getTable()
+		def responses = DB.interpret(query_code),
+			last = responses[-1],
+			last_table = last?.getTable()
 		
 		if (SERIALIZE_MODE) {
-			computed_schemas[total_queries-1] = [
-				'table_name': last_table?.getTableName().inspect(),
-				'column_names': last_table?.getColumnNames().inspect(),
-				'column_types': last_table?.getColumnTypes().inspect(),
-				'primary_index': last_table?.getPrimaryIndex().inspect()
-			]
+			def ser = {it.inspect()?.replaceAll(/(true|false|null):/, '($1):') ?: 'null'}
+			
+			computed_schemas[total_queries-1] = 
+				ser(last_table ? [
+					'table_name': last_table.getTableName(),
+					'column_names': last_table.getColumnNames(),
+					'column_types': last_table.getColumnTypes(),
+					'primary_index': last_table.getPrimaryIndex()
+				] : null)
 				
 			computed_states[total_queries-1] =
-				last_table?.inspect().replaceAll(/(true|false|null):/, '($1):')
+				ser(last_table?.getState())
 			
-			stored_schemas[total_queries-1] = [
-				'table_name': DB.getTables()?.get(stored_table_name)?.getTableName().inspect(),
-				'column_names': DB.getTables()?.get(stored_table_name)?.getColumnNames().inspect(),
-				'column_types': DB.getTables()?.get(stored_table_name)?.getColumnTypes().inspect(),
-				'primary_index': DB.getTables()?.get(stored_table_name)?.getPrimaryIndex().inspect()
-			]
+			stored_schemas[total_queries-1] =
+				ser(DB.getTables()?.get(stored_table_name) ? [
+					'table_name': DB.getTables()?.get(stored_table_name)?.getTableName(),
+					'column_names': DB.getTables()?.get(stored_table_name)?.getColumnNames(),
+					'column_types': DB.getTables()?.get(stored_table_name)?.getColumnTypes(),
+					'primary_index': DB.getTables()?.get(stored_table_name)?.getPrimaryIndex()
+				] : null)
 			
 			stored_states[total_queries-1] =
-				DB.getTables()?.get(stored_table_name)?.inspect().replaceAll(/(true|false|null):/, '($1):')
+				ser(DB.getTables()?.get(stored_table_name)?.getState())
 			
 			return
 		}
@@ -215,27 +223,35 @@ abstract class AbstractModule {
 		if (SERIALIZE_MODE) {
 			System.out.println()
 			
-			System.err.println('\tcomputed_schemas = [')
+			System.err.println('\t\tcomputed_schemas = [')
 			for (String s: computed_schemas)
-				System.err.println("\t\t$s,")
+				System.err.println("\t\t\t$s,")
+			System.err.println('\t\t]')
 			
-			System.err.println('\t]\n\n\tcomputed_states = [')
+			System.err.println()
+			
+			System.err.println('\t\tcomputed_states = [')
 			for (String s: computed_states)
-				System.err.println("\t\t$s,")
+				System.err.println("\t\t\t$s,")
+			System.err.println('\t\t]')
 			
 			if (stored_schemas.count({it != null.inspect()}) > 0) {
-				System.err.println('\t]\n\n\tstored_schemas = [')
+				System.err.println()
+				
+				System.err.println('\t\tstored_schemas = [')
 				for (String s: stored_schemas)
-					System.err.println("\t\t$s,")
+					System.err.println("\t\t\t$s,")
+				System.err.println('\t\t]')
 			}
 			
 			if (stored_states.count({it != null.inspect()}) > 0) {
-				System.err.println('\t]\n\n\tstored_states = [')
+				System.err.println()
+				
+				System.err.println('\t\tstored_states = [')
 				for (String s: stored_states)
-					System.err.println("\t\t$s,")
+					System.err.println("\t\t\t$s,")
+				System.err.println('\t\t]')
 			}
-			
-			System.err.println('\t]')
 		}
 		
 		try {
